@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import ProfilePage from "./ProfilePage";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import Sidebar         from "../components/Sidebar";
@@ -7,7 +8,12 @@ import AppointmentCard, { isLate } from "../components/AppointmentCard";
 import StatsCard       from "../components/StatsCard";
 import Spinner         from "../components/Spinner";
 
-const TAB_TITLES = { overview: "Overview", appointments: "My Appointments" };
+const TAB_TITLES = {
+  overview:     "Overview",
+  appointments: "My Appointments",
+  schedule:     "My Schedule",
+  profile:      "My Profile",
+};
 
 export default function DoctorDashboard() {
   const { user } = useAuth();
@@ -16,8 +22,11 @@ export default function DoctorDashboard() {
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState("");
   const [mobileOpen,   setMobileOpen]   = useState(false);
-  const [filterStatus, setFilterStatus] = useState("ALL");
-  const [search,       setSearch]       = useState("");
+  const [filterStatus,  setFilterStatus]  = useState("ALL");
+  const [search,        setSearch]        = useState("");
+  const [scheduleDate,  setScheduleDate]  = useState(new Date().toISOString().split("T")[0]);
+  const [scheduleSlots, setScheduleSlots] = useState([]);
+  const [schedLoading,  setSchedLoading]  = useState(false);
 
   const fetchAppts = useCallback(async () => {
     setLoading(true); setError("");
@@ -28,11 +37,26 @@ export default function DoctorDashboard() {
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetchAppts(); }, [fetchAppts]);
-
-  const handleComplete = async (id) => {
+  const fetchSchedule = useCallback(async (date) => {
+    if (!user?._id && !user?.id) return;
+    setSchedLoading(true);
     try {
-      const { data } = await axios.put(`/api/appointments/${id}/complete`);
+      const docId = user._id || user.id;
+      const { data } = await axios.get(`/api/appointments/slots?doctorId=${docId}&date=${date}`);
+      setScheduleSlots(data.slots || []);
+    } catch {
+      setScheduleSlots([]);
+    } finally {
+      setSchedLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => { fetchAppts(); }, [fetchAppts]);
+  useEffect(() => { if (scheduleDate) fetchSchedule(scheduleDate); }, [scheduleDate, fetchSchedule]);
+
+  const handleComplete = async (id, confirmationDetails) => {
+    try {
+      const { data } = await axios.put(`/api/appointments/${id}/complete`, confirmationDetails);
       setAppointments((prev) => prev.map((a) => a._id === id ? data : a));
     } catch (err) { alert(err.response?.data?.message || "Failed to mark complete."); }
   };
@@ -164,6 +188,93 @@ export default function DoctorDashboard() {
               )}
             </>
           )}
+
+          {/* ── SCHEDULE ── */}
+          {tab === "schedule" && (
+            <>
+              <div className="page-header">
+                <h2>My Schedule</h2>
+                <p>View your booked and available time slots for any date.</p>
+              </div>
+
+              <div className="card" style={{ maxWidth: 640 }}>
+                <div className="card-header">
+                  <h3>Select Date</h3>
+                </div>
+                <div className="card-body">
+                  <input
+                    type="date"
+                    value={scheduleDate}
+                    onChange={(e) => setScheduleDate(e.target.value)}
+                    style={{ marginBottom: 20 }}
+                  />
+
+                  {schedLoading ? (
+                    <Spinner />
+                  ) : scheduleSlots.length === 0 ? (
+                    <p style={{ color: "var(--muted)", fontSize: 14 }}>No slot data available.</p>
+                  ) : (
+                    <>
+                      <div style={{ marginBottom: 10, fontSize: 13, color: "var(--muted)" }}>
+                        {scheduleSlots.filter(s => s.available).length} available ·{" "}
+                        {scheduleSlots.filter(s => !s.available).length} booked
+                      </div>
+                      <div style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))",
+                        gap: 8,
+                      }}>
+                        {scheduleSlots.map((slot) => {
+                          const isPast = new Date(`${scheduleDate}T${slot.time}`) < new Date();
+                          return (
+                            <div key={slot.time} style={{
+                              padding: "10px 12px",
+                              borderRadius: 8,
+                              border: "1px solid " + (slot.available ? (isPast ? "#E5E7EB" : "#A7F3D0") : "#FECACA"),
+                              background: slot.available ? (isPast ? "#F9FAFB" : "#F0FDF4") : "#FEF2F2",
+                              fontSize: 13,
+                            }}>
+                              <div style={{
+                                fontWeight: 700,
+                                color: slot.available ? (isPast ? "#9CA3AF" : "#065F46") : "#991B1B",
+                                marginBottom: 2,
+                              }}>
+                                {(() => {
+                                  const [h, m] = slot.time.split(":");
+                                  const hr = parseInt(h, 10);
+                                  return `${hr > 12 ? hr - 12 : hr || 12}:${m} ${hr >= 12 ? "PM" : "AM"}`;
+                                })()}
+                              </div>
+                              <div style={{ fontSize: 11, color: slot.available ? (isPast ? "#9CA3AF" : "#047857") : "#B91C1C" }}>
+                                {slot.available
+                                  ? isPast ? "Past" : "Available"
+                                  : slot.appointment?.patient
+                                    ? `${slot.appointment.patient.firstName} ${slot.appointment.patient.lastName}`
+                                    : "Booked"}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Legend */}
+                      <div style={{ display: "flex", gap: 16, marginTop: 14, fontSize: 12, color: "var(--muted)" }}>
+                        <span style={{ color: "#065F46" }}>■ Available</span>
+                        <span style={{ color: "#991B1B" }}>■ Booked</span>
+                        <span style={{ color: "#9CA3AF" }}>■ Past</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ── PROFILE ── */}
+          {tab === "profile" && (
+            <ProfilePage />
+          )}
+
         </main>
       </div>
     </div>

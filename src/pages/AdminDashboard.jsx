@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import ProfilePage from "./ProfilePage";
 import axios from "axios";
 import Sidebar         from "../components/Sidebar";
 import Topbar          from "../components/Topbar";
@@ -8,19 +9,15 @@ import StatsCard       from "../components/StatsCard";
 import Spinner         from "../components/Spinner";
 
 const TAB_TITLES = {
-  overview:     "Admin Overview",
-  appointments: "All Appointments",
-  patients:     "Manage Patients",
-  doctors:      "Manage Doctors",
-  "add-doctor": "Add Doctor Account",
+  overview:          "Admin Overview",
+  appointments:      "All Appointments",
+  patients:          "Manage Patients",
+  doctors:           "Manage Doctors",
+  "add-doctor":      "Add Doctor Account",
+  specializations:   "Manage Specializations",
+  "add-admin":       "Add Admin Account",
+  profile:           "My Profile",
 };
-
-const SPECIALIZATIONS = [
-  "General Practitioner","Cardiology","Dermatology","Endocrinology",
-  "Gastroenterology","Neurology","Obstetrics & Gynecology","Oncology",
-  "Ophthalmology","Orthopedics","Pediatrics","Psychiatry",
-  "Pulmonology","Radiology","Surgery","Urology",
-];
 
 export default function AdminDashboard() {
   const [tab,          setTab]          = useState("overview");
@@ -35,7 +32,24 @@ export default function AdminDashboard() {
   const [search,       setSearch]       = useState("");
   const [userSearch,   setUserSearch]   = useState("");
 
-  // Add Doctor form state
+  // ── Add Admin form state ─────────────────────────────────────
+  const [adminForm,    setAdminForm]    = useState({
+    firstName: "", lastName: "", email: "", password: "",
+  });
+  const [adminError,   setAdminError]   = useState("");
+  const [adminSuccess, setAdminSuccess] = useState("");
+  const [adminLoading, setAdminLoading] = useState(false);
+
+  // ── Specializations state ─────────────────────────────────────
+  const [specs,        setSpecs]        = useState([]);
+  const [specsLoading, setSpecsLoading] = useState(false);
+  const [newSpecName,  setNewSpecName]  = useState("");
+  const [specError,    setSpecError]    = useState("");
+  const [specSuccess,  setSpecSuccess]  = useState("");
+  const [editingSpec,  setEditingSpec]  = useState(null); // { _id, name }
+  const [editName,     setEditName]     = useState("");
+
+  // ── Add Doctor form state ─────────────────────────────────────
   const [docForm, setDocForm] = useState({
     firstName: "", lastName: "", email: "", password: "",
     specialization: "", licenseNumber: "", phone: "",
@@ -44,6 +58,7 @@ export default function AdminDashboard() {
   const [docSuccess, setDocSuccess] = useState("");
   const [docLoading, setDocLoading] = useState(false);
 
+  // ── Fetch functions ───────────────────────────────────────────
   const fetchAppointments = useCallback(async () => {
     setLoading(true); setError("");
     try {
@@ -66,8 +81,22 @@ export default function AdminDashboard() {
     finally { setUsersLoading(false); }
   }, []);
 
-  useEffect(() => { fetchAppointments(); fetchUsers(); }, [fetchAppointments, fetchUsers]);
+  const fetchSpecs = useCallback(async () => {
+    setSpecsLoading(true);
+    try {
+      const { data } = await axios.get("/api/specializations");
+      setSpecs(data);
+    } catch { setSpecError("Failed to load specializations."); }
+    finally { setSpecsLoading(false); }
+  }, []);
 
+  useEffect(() => {
+    fetchAppointments();
+    fetchUsers();
+    fetchSpecs();
+  }, [fetchAppointments, fetchUsers, fetchSpecs]);
+
+  // ── Appointment handlers ──────────────────────────────────────
   const handleCancel = async (id, reason) => {
     try {
       const { data } = await axios.put(`/api/appointments/${id}/cancel`, { cancelReason: reason });
@@ -75,13 +104,14 @@ export default function AdminDashboard() {
     } catch (err) { alert(err.response?.data?.message || "Failed to cancel."); }
   };
 
-  const handleAssign = async (apptId, doctorId) => {
+  const handleAssign = async (apptId, doctorId, appointmentTime) => {
     try {
-      const { data } = await axios.put(`/api/appointments/${apptId}/assign`, { doctorId });
+      const { data } = await axios.put(`/api/appointments/${apptId}/assign`, { doctorId, appointmentTime });
       setAppointments((prev) => prev.map((a) => a._id === apptId ? data : a));
     } catch (err) { alert(err.response?.data?.message || "Failed to assign doctor."); }
   };
 
+  // ── User handlers ─────────────────────────────────────────────
   const handleToggleBlock = async (userId, blocked) => {
     try {
       const { data } = await axios.put(`/api/users/${userId}/block`, { blocked });
@@ -91,6 +121,36 @@ export default function AdminDashboard() {
     } catch (err) { alert(err.response?.data?.message || "Failed to update user."); }
   };
 
+  const handleDelete = async (userId) => {
+    try {
+      await axios.delete(`/api/users/${userId}`);
+      setPatients((prev) => prev.filter((p) => p._id !== userId));
+      setDoctors((prev)  => prev.filter((d) => d._id !== userId));
+    } catch (err) { alert(err.response?.data?.message || "Failed to delete user."); }
+  };
+
+  // ── Add Admin ─────────────────────────────────────────────────
+  const handleAddAdmin = async (e) => {
+    e.preventDefault();
+    setAdminError(""); setAdminSuccess("");
+    if (adminForm.password.length < 6) {
+      setAdminError("Password must be at least 6 characters."); return;
+    }
+    setAdminLoading(true);
+    try {
+      await axios.post("/api/auth/create-admin", adminForm);
+      setAdminSuccess(`Admin account created for ${adminForm.firstName} ${adminForm.lastName}. They can now log in immediately.`);
+      setAdminForm({ firstName: "", lastName: "", email: "", password: "" });
+    } catch (err) {
+      setAdminError(err.response?.data?.message || "Failed to create admin account.");
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  const handleAdminChange = (e) => setAdminForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+
+  // ── Add Doctor ────────────────────────────────────────────────
   const handleAddDoctor = async (e) => {
     e.preventDefault();
     setDocError(""); setDocSuccess("");
@@ -100,7 +160,7 @@ export default function AdminDashboard() {
       await axios.post("/api/auth/create-doctor", docForm);
       setDocSuccess(`Doctor account created for ${docForm.firstName} ${docForm.lastName}. They can now log in.`);
       setDocForm({ firstName: "", lastName: "", email: "", password: "", specialization: "", licenseNumber: "", phone: "" });
-      fetchUsers(); // refresh doctors list
+      fetchUsers();
     } catch (err) {
       setDocError(err.response?.data?.message || "Failed to create doctor account.");
     } finally {
@@ -110,6 +170,45 @@ export default function AdminDashboard() {
 
   const handleDocChange = (e) => setDocForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
+  // ── Specialization handlers ───────────────────────────────────
+  const handleAddSpec = async (e) => {
+    e.preventDefault();
+    setSpecError(""); setSpecSuccess("");
+    if (!newSpecName.trim()) { setSpecError("Please enter a specialization name."); return; }
+    try {
+      const { data } = await axios.post("/api/specializations", { name: newSpecName.trim() });
+      setSpecs((prev) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewSpecName("");
+      setSpecSuccess(`"${data.name}" added successfully.`);
+    } catch (err) { setSpecError(err.response?.data?.message || "Failed to add specialization."); }
+  };
+
+  const handleEditSpec = (spec) => {
+    setEditingSpec(spec);
+    setEditName(spec.name);
+    setSpecError(""); setSpecSuccess("");
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editName.trim()) { setSpecError("Name cannot be empty."); return; }
+    try {
+      const { data } = await axios.put(`/api/specializations/${editingSpec._id}`, { name: editName.trim() });
+      setSpecs((prev) => prev.map((s) => s._id === data._id ? data : s).sort((a, b) => a.name.localeCompare(b.name)));
+      setEditingSpec(null); setEditName("");
+      setSpecSuccess(`Updated to "${data.name}".`);
+    } catch (err) { setSpecError(err.response?.data?.message || "Failed to update."); }
+  };
+
+  const handleDeleteSpec = async (spec) => {
+    if (!window.confirm(`Delete "${spec.name}"? This cannot be undone.`)) return;
+    try {
+      await axios.delete(`/api/specializations/${spec._id}`);
+      setSpecs((prev) => prev.filter((s) => s._id !== spec._id));
+      setSpecSuccess(`"${spec.name}" deleted.`);
+    } catch (err) { setSpecError(err.response?.data?.message || "Failed to delete."); }
+  };
+
+  // ── Stats & filters ───────────────────────────────────────────
   const stats = {
     total:      appointments.length,
     pending:    appointments.filter((a) => a.status === "PENDING").length,
@@ -151,10 +250,10 @@ export default function AdminDashboard() {
     <div className="dashboard-shell">
       <Sidebar activeTab={tab} onTabChange={setTab} mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
       <div className="main-content">
-        <Topbar title={TAB_TITLES[tab]} onMenuClick={() => setMobileOpen(true)} />
+        <Topbar title={TAB_TITLES[tab] || "Admin"} onMenuClick={() => setMobileOpen(true)} />
         <main className="page-content">
 
-          {/* OVERVIEW */}
+          {/* ── OVERVIEW ── */}
           {tab === "overview" && (
             <>
               <div className="page-header">
@@ -164,22 +263,21 @@ export default function AdminDashboard() {
 
               <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 10 }}>APPOINTMENTS</p>
               <div className="stats-grid" style={{ marginBottom: 28 }}>
-                <StatsCard value={stats.total}      label="Total"          color="navy"   />
-                <StatsCard value={stats.pending}    label="Pending"        color="orange" />
-                <StatsCard value={stats.confirmed}  label="Confirmed"      color="teal"   />
-                <StatsCard value={stats.completed}  label="Completed"      color="green"  />
-                <StatsCard value={stats.cancelled}  label="Cancelled"      color="red"    />
-                <StatsCard value={stats.late}       label="Late / Missed"  color="red"    />
+                <StatsCard value={stats.total}      label="Total"         color="navy"   />
+                <StatsCard value={stats.pending}    label="Pending"       color="orange" />
+                <StatsCard value={stats.confirmed}  label="Confirmed"     color="teal"   />
+                <StatsCard value={stats.completed}  label="Completed"     color="green"  />
+                <StatsCard value={stats.cancelled}  label="Cancelled"     color="red"    />
+                <StatsCard value={stats.late}       label="Late / Missed" color="red"    />
               </div>
 
               <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 10 }}>USERS</p>
               <div className="stats-grid" style={{ marginBottom: 28 }}>
-                <StatsCard value={stats.patients}   label="Patients"       color="teal"   />
-                <StatsCard value={stats.doctors}    label="Doctors"        color="navy"   />
-                <StatsCard value={stats.unassigned} label="Unassigned"     color="orange" />
+                <StatsCard value={stats.patients}   label="Patients"   color="teal"   />
+                <StatsCard value={stats.doctors}    label="Doctors"    color="navy"   />
+                <StatsCard value={stats.unassigned} label="Unassigned" color="orange" />
               </div>
 
-              {/* Unassigned */}
               <div className="card" style={{ marginBottom: 22 }}>
                 <div className="card-header">
                   <h3>
@@ -205,7 +303,6 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* Recent */}
               <div className="card">
                 <div className="card-header">
                   <h3>Recent Appointments</h3>
@@ -226,7 +323,7 @@ export default function AdminDashboard() {
             </>
           )}
 
-          {/* ALL APPOINTMENTS */}
+          {/* ── ALL APPOINTMENTS ── */}
           {tab === "appointments" && (
             <>
               <div className="page-header">
@@ -263,7 +360,7 @@ export default function AdminDashboard() {
             </>
           )}
 
-          {/* PATIENTS */}
+          {/* ── PATIENTS ── */}
           {tab === "patients" && (
             <>
               <div className="page-header">
@@ -278,12 +375,12 @@ export default function AdminDashboard() {
                 <span style={{ fontSize: 14, color: "var(--muted)" }}>{patients.length} patient{patients.length !== 1 ? "s" : ""}</span>
               </div>
               <div className="card">
-                {usersLoading ? <Spinner /> : <UserTable users={filterUsers(patients)} onToggleBlock={handleToggleBlock} />}
+                {usersLoading ? <Spinner /> : <UserTable users={filterUsers(patients)} onToggleBlock={handleToggleBlock} onDelete={handleDelete} />}
               </div>
             </>
           )}
 
-          {/* DOCTORS */}
+          {/* ── DOCTORS ── */}
           {tab === "doctors" && (
             <>
               <div className="page-header">
@@ -299,12 +396,12 @@ export default function AdminDashboard() {
                 <span style={{ fontSize: 14, color: "var(--muted)" }}>{doctors.length} doctor{doctors.length !== 1 ? "s" : ""}</span>
               </div>
               <div className="card">
-                {usersLoading ? <Spinner /> : <UserTable users={filterUsers(doctors)} onToggleBlock={handleToggleBlock} />}
+                {usersLoading ? <Spinner /> : <UserTable users={filterUsers(doctors)} onToggleBlock={handleToggleBlock} onDelete={handleDelete} />}
               </div>
             </>
           )}
 
-          {/* ADD DOCTOR */}
+          {/* ── ADD DOCTOR ── */}
           {tab === "add-doctor" && (
             <>
               <div className="page-header">
@@ -332,15 +429,26 @@ export default function AdminDashboard() {
                       <input type="email" name="email" placeholder="doctor@medicare.com" value={docForm.email} onChange={handleDocChange} required />
                     </div>
                     <div className="form-group">
-                      <label> Password</label>
+                      <label>Password</label>
                       <input type="password" name="password" placeholder="Min. 6 characters" value={docForm.password} onChange={handleDocChange} required />
                     </div>
                     <div className="form-group">
                       <label>Specialization</label>
-                      <select name="specialization" value={docForm.specialization} onChange={handleDocChange} required>
-                        <option value="">— Select specialization —</option>
-                        {SPECIALIZATIONS.map((s) => <option key={s}>{s}</option>)}
-                      </select>
+                      {specs.length === 0 ? (
+                        <div className="alert alert-info" style={{ fontSize: 13 }}>
+                          No specializations found.{" "}
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTab("specializations")}>
+                            Add specializations first →
+                          </button>
+                        </div>
+                      ) : (
+                        <select name="specialization" value={docForm.specialization} onChange={handleDocChange} required>
+                          <option value="">— Select specialization —</option>
+                          {specs.map((s) => (
+                            <option key={s._id} value={s.name}>{s.name}</option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                     <div className="form-row">
                       <div className="form-group">
@@ -357,7 +465,7 @@ export default function AdminDashboard() {
                       Share the email and password with them securely.
                     </div>
                     <div style={{ display: "flex", gap: 12 }}>
-                      <button type="submit" className="btn btn-primary" disabled={docLoading}>
+                      <button type="submit" className="btn btn-primary" disabled={docLoading || specs.length === 0}>
                         {docLoading ? "Creating..." : "Create Doctor Account"}
                       </button>
                       <button type="button" className="btn btn-ghost" onClick={() => setTab("doctors")}>
@@ -368,6 +476,177 @@ export default function AdminDashboard() {
                 </div>
               </div>
             </>
+          )}
+
+          {/* ── SPECIALIZATIONS ── */}
+          {tab === "specializations" && (
+            <>
+              <div className="page-header">
+                <h2>Manage Specializations</h2>
+                <p>Add, edit, or remove medical specializations. Changes reflect immediately in the Add Doctor form.</p>
+              </div>
+
+              {/* Add new */}
+              <div className="card" style={{ maxWidth: 560, marginBottom: 24 }}>
+                <div className="card-header"><h3>Add New Specialization</h3></div>
+                <div className="card-body">
+                  {specError   && <div className="alert alert-error"   style={{ marginBottom: 12 }}>{specError}</div>}
+                  {specSuccess && <div className="alert alert-success" style={{ marginBottom: 12 }}>{specSuccess}</div>}
+                  <form onSubmit={handleAddSpec} style={{ display: "flex", gap: 10 }}>
+                    <input
+                      type="text"
+                      placeholder="e.g. Neurosurgery"
+                      value={newSpecName}
+                      onChange={(e) => setNewSpecName(e.target.value)}
+                      style={{ flex: 1 }}
+                    />
+                    <button type="submit" className="btn btn-primary btn-sm">
+                      Add
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+              {/* List */}
+              <div className="card">
+                <div className="card-header">
+                  <h3>Current Specializations</h3>
+                  <span style={{ fontSize: 14, color: "var(--muted)" }}>{specs.length} total</span>
+                </div>
+                <div className="card-body" style={{ padding: 0 }}>
+                  {specsLoading ? <Spinner /> : specs.length === 0 ? (
+                    <div className="empty-state" style={{ padding: "32px 20px" }}>
+                      <h4>No specializations yet</h4>
+                      <p>Add your first specialization above to get started.</p>
+                    </div>
+                  ) : (
+                    <div className="table-wrapper">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>#</th>
+                            <th>Specialization Name</th>
+                            <th>Added</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {specs.map((s, i) => (
+                            <tr key={s._id}>
+                              <td className="td-muted">{i + 1}</td>
+                              <td>
+                                {editingSpec?._id === s._id ? (
+                                  <input
+                                    type="text"
+                                    value={editName}
+                                    onChange={(e) => setEditName(e.target.value)}
+                                    style={{ width: "100%", padding: "4px 8px" }}
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <strong>{s.name}</strong>
+                                )}
+                              </td>
+                              <td className="td-muted">
+                                {new Date(s.createdAt).toLocaleDateString()}
+                              </td>
+                              <td>
+                                {editingSpec?._id === s._id ? (
+                                  <div style={{ display: "flex", gap: 6 }}>
+                                    <button className="btn btn-success btn-sm" onClick={handleSaveEdit}>Save</button>
+                                    <button className="btn btn-ghost btn-sm" onClick={() => { setEditingSpec(null); setEditName(""); }}>Cancel</button>
+                                  </div>
+                                ) : (
+                                  <div style={{ display: "flex", gap: 6 }}>
+                                    <button className="btn btn-outline btn-sm" onClick={() => handleEditSpec(s)}>Edit</button>
+                                    <button className="btn btn-danger btn-sm" onClick={() => handleDeleteSpec(s)}>Delete</button>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
+
+          {/* ── ADD ADMIN ── */}
+          {tab === "add-admin" && (
+            <>
+              <div className="page-header">
+                <h2>Add Admin Account</h2>
+                <p>Create a new administrator account. The new admin can log in immediately with full access.</p>
+              </div>
+              <div className="card" style={{ maxWidth: 500 }}>
+                <div className="card-header"><h3>New Admin Details</h3></div>
+                <div className="card-body">
+                  {adminError   && <div className="alert alert-error">{adminError}</div>}
+                  {adminSuccess && <div className="alert alert-success">{adminSuccess}</div>}
+                  <form onSubmit={handleAddAdmin}>
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label>First Name</label>
+                        <input
+                          type="text" name="firstName" placeholder="Mark"
+                          value={adminForm.firstName} onChange={handleAdminChange} required
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Last Name</label>
+                        <input
+                          type="text" name="lastName" placeholder="Johnson"
+                          value={adminForm.lastName} onChange={handleAdminChange} required
+                        />
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label>Email Address</label>
+                      <input
+                        type="email" name="email" placeholder="admin@medicare.com"
+                        value={adminForm.email} onChange={handleAdminChange} required
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Password</label>
+                      <input
+                        type="password" name="password" placeholder="Min. 6 characters"
+                        value={adminForm.password} onChange={handleAdminChange} required
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Role</label>
+                      <input
+                        type="text" value="ADMIN" readOnly
+                        style={{ background: "var(--grey-lt)", color: "var(--muted)", cursor: "not-allowed" }}
+                      />
+                    </div>
+                    <div className="alert alert-info" style={{ fontSize: 13, marginBottom: 18 }}>
+                      The new admin will have full access to the dashboard including all tabs.
+                      Share the credentials with them securely.
+                    </div>
+                    <div style={{ display: "flex", gap: 12 }}>
+                      <button type="submit" className="btn btn-primary" disabled={adminLoading}>
+                        {adminLoading ? "Creating..." : "Create Admin Account"}
+                      </button>
+                      <button type="button" className="btn btn-ghost" onClick={() => setAdminForm({ firstName: "", lastName: "", email: "", password: "" })}>
+                        Clear
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </>
+          )}
+
+
+          {/* ── PROFILE ── */}
+          {tab === "profile" && (
+            <ProfilePage />
           )}
 
         </main>

@@ -1,12 +1,23 @@
 import { useState } from "react";
 
-export default function UserTable({ users, onToggleBlock }) {
-  const [busy, setBusy] = useState(null);
+export default function UserTable({ users, onToggleBlock, onDelete }) {
+  const [busyBlock,  setBusyBlock]  = useState(null);
+  const [busyDelete, setBusyDelete] = useState(null);
 
   const handleToggle = async (u) => {
-    setBusy(u._id);
+    setBusyBlock(u._id);
     await onToggleBlock(u._id, !u.isBlocked);
-    setBusy(null);
+    setBusyBlock(null);
+  };
+
+  const handleDelete = async (u) => {
+    const confirmed = window.confirm(
+      `Permanently delete ${u.firstName} ${u.lastName}?\n\nThis cannot be undone.`
+    );
+    if (!confirmed) return;
+    setBusyDelete(u._id);
+    await onDelete(u._id);
+    setBusyDelete(null);
   };
 
   if (!users.length) {
@@ -29,7 +40,7 @@ export default function UserTable({ users, onToggleBlock }) {
             <th>Details</th>
             <th>Status</th>
             <th>Joined</th>
-            <th>Action</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -61,13 +72,24 @@ export default function UserTable({ users, onToggleBlock }) {
                 {new Date(u.createdAt).toLocaleDateString()}
               </td>
               <td>
-                <button
-                  className={`btn btn-sm ${u.isBlocked ? "btn-success" : "btn-danger"}`}
-                  onClick={() => handleToggle(u)}
-                  disabled={busy === u._id}
-                >
-                  {busy === u._id ? "..." : u.isBlocked ? "Unblock" : "Block"}
-                </button>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <button
+                    className={`btn btn-sm ${u.isBlocked ? "btn-success" : "btn-outline"}`}
+                    onClick={() => handleToggle(u)}
+                    disabled={busyBlock === u._id || busyDelete === u._id}
+                    title={u.isBlocked ? "Unblock account" : "Block account"}
+                  >
+                    {busyBlock === u._id ? "..." : u.isBlocked ? "Unblock" : "Block"}
+                  </button>
+                  <button
+                    className="btn btn-sm btn-danger"
+                    onClick={() => handleDelete(u)}
+                    disabled={busyDelete === u._id || busyBlock === u._id}
+                    title="Permanently delete this account"
+                  >
+                    {busyDelete === u._id ? "..." : "Delete"}
+                  </button>
+                </div>
               </td>
             </tr>
           ))}

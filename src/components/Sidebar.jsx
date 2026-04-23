@@ -6,17 +6,23 @@ const NAV = {
     { key: "overview",     label: "Overview"          },
     { key: "book",         label: "Book Appointment"  },
     { key: "appointments", label: "My Appointments"   },
+    { key: "profile",      label: "My Profile"        },
   ],
   DOCTOR: [
     { key: "overview",     label: "Overview"          },
     { key: "appointments", label: "My Appointments"   },
+    { key: "schedule",     label: "My Schedule"       },
+    { key: "profile",      label: "My Profile"        },
   ],
   ADMIN: [
-    { key: "overview",     label: "Overview"          },
-    { key: "appointments", label: "All Appointments"  },
-    { key: "patients",     label: "Patients"          },
-    { key: "doctors",      label: "Doctors"           },
-    { key: "add-doctor",   label: "Add Doctor"        },
+    { key: "overview",        label: "Overview"           },
+    { key: "appointments",    label: "All Appointments"   },
+    { key: "patients",        label: "Patients"           },
+    { key: "doctors",         label: "Doctors"            },
+    { key: "add-doctor",      label: "Add Doctor"         },
+    { key: "specializations", label: "Specializations"    },
+    { key: "add-admin",       label: "Add Admin"          },
+    { key: "profile",         label: "My Profile"         },
   ],
 };
 
@@ -67,7 +73,7 @@ export default function Sidebar({ activeTab, onTabChange, mobileOpen, onClose })
             </div>
           </div>
           <button className="sidebar-logout" onClick={handleLogout}>
-            Sign Out
+            Log out
           </button>
         </div>
       </aside>

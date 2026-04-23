@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import ProfilePage from "./ProfilePage";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import Sidebar         from "../components/Sidebar";
@@ -12,6 +13,7 @@ const TAB_TITLES = {
   overview:     "Overview",
   book:         "Book Appointment",
   appointments: "My Appointments",
+  profile:      "My Profile",
 };
 
 export default function PatientDashboard() {
@@ -208,6 +210,12 @@ export default function PatientDashboard() {
               )}
             </>
           )}
+
+          {/* ── PROFILE ── */}
+          {tab === "profile" && (
+            <ProfilePage />
+          )}
+
         </main>
       </div>
       {showBooking && <BookingModal onClose={() => setShowBooking(false)} onBooked={handleBooked} />}
